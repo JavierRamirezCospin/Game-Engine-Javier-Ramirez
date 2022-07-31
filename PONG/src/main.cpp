@@ -1,11 +1,13 @@
 #include <iostream>
 #include <time.h>
+#include <math.h>
 #include <SDL2/SDL.h>
 
 SDL_Window* window;
 SDL_Renderer* renderer;
 SDL_Color color;
 SDL_Rect l_pad, r_pad, ball;
+double pi = 3.14159265;
 bool running = true;
 int frm_cnt, tmr_fps, last_frm, fps, b_size, b_speed, p_speed;
 float velX, velY;
@@ -13,7 +15,10 @@ int w_width, w_height;
 
 void Serve() {
     ball.x = (w_width / 2) - (ball.w / 2);
-    ball.y = 0;
+    ball.y = 20;
+    velY = b_speed/2;
+    int num = rand() % 11;
+    num <= 5 ? velX = -b_speed/2 : velX = b_speed/2;
 }
 
 void Update() {
@@ -21,6 +26,32 @@ void Update() {
     if(l_pad.y+l_pad.h>w_height) { l_pad.y = w_height-l_pad.h; }
     if(r_pad.y<0) { r_pad.y = 0; }
     if(r_pad.y+r_pad.h>w_height) { r_pad.y = w_height-r_pad.h; }
+    if(ball.x <= 0) { 
+        printf("Player 1 won ...\n"); 
+        running = false;
+    }
+    if(ball.x + ball.w >= w_width) { 
+        ("Player 2 won ...\n"); 
+        running = false;    
+    }
+    if(ball.y <= 0) { velY = -velY; }
+    if(ball.y+b_size >= w_height) { velY = -velY; }
+    if(SDL_HasIntersection(&ball,&r_pad)) { 
+        double rel = (r_pad.y + (r_pad.h/2))-(ball.y+(b_size/2));
+        double norm = rel/(r_pad.h/2);
+        double bounce = norm*(5*pi/2);
+        velX = b_speed * cos(bounce);
+        velY = b_speed * -sin(bounce);
+    }
+    if(SDL_HasIntersection(&ball,&l_pad)) { 
+        double rel = (l_pad.y + (l_pad.h/2))-(ball.y+(b_size/2));
+        double norm = rel/(l_pad.h/2);
+        double bounce = norm*(5*pi/2);
+        velX = b_speed * cos(bounce);
+        velY = b_speed * -sin(bounce);
+    }
+    ball.x += velX;
+    ball.y += velY;
 }
 
 void Input() {
