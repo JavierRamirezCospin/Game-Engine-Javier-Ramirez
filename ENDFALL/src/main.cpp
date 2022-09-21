@@ -11,7 +11,9 @@
 SDL_Window* window;
 SDL_Renderer* renderer;
 SDL_Texture* currBackground;
-bool isRunning;
+SDL_Texture* plyrleft;
+SDL_Texture* plyrright;
+bool isRunning, front;
 int frm_cnt, last_frm, lst_count, tmr_fps, fps;
 entt::registry registry;
 entt::entity scene1, scene2;
@@ -34,9 +36,11 @@ void Init() {
     scene2 = registry.create();
     registry.emplace<backgroundimage>(scene2,bckgr2);
     /* Player */
-    SDL_Texture* plyr = IMG_LoadTexture(renderer,"./res/MainC.png");
     player = registry.create();
-    registry.emplace<backgroundimage>(player,plyr);
+    front = true;
+    plyrright = IMG_LoadTexture(renderer,"./res/MainCRight.png");
+    plyrleft = IMG_LoadTexture(renderer,"./res/MainCLeft.png");
+    registry.emplace<backgroundimage>(player,plyrright);
     registry.emplace<velocity>(player,6,6);
     SDL_Rect plyrrect;
     plyrrect.w = plyrrect.h = 64;
@@ -67,6 +71,11 @@ void Render() {
         }
     }
     SDL_RenderCopy(renderer,currBackground,NULL,NULL);
+    if(front) {
+        registry.replace<backgroundimage>(player,plyrright);
+    } else {
+        registry.replace<backgroundimage>(player,plyrleft);
+    }
     auto plyr = registry.get<backgroundimage,figure>(player);
     SDL_RenderCopy(renderer,std::get<0>(plyr).tex,NULL,&std::get<1>(plyr).bd);
     SDL_RenderPresent(renderer);
@@ -88,10 +97,12 @@ void Input() {
             std::get<1>(plyr).bd.y += (int)std::get<0>(plyr).dy;
          }
         if(keystts[SDL_SCANCODE_A]) { 
+            front = false;
             auto plyr = registry.get<velocity,figure>(player);
             std::get<1>(plyr).bd.x -= (int)std::get<0>(plyr).dx;
         }
         if(keystts[SDL_SCANCODE_D]) { 
+            front = true;
             auto plyr = registry.get<velocity,figure>(player);
             std::get<1>(plyr).bd.x += (int)std::get<0>(plyr).dx;
         }
@@ -156,6 +167,7 @@ int main(int argc,char* argv[]) {
         Update();
     }
     printf("Cleaning up environment...\n");
+    IMG_Quit();
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
