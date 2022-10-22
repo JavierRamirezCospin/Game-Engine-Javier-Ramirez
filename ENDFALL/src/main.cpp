@@ -10,45 +10,57 @@
 
 SDL_Window* window;
 SDL_Renderer* renderer;
-SDL_Texture* currBackground;
-SDL_Texture* plyrleft;
-SDL_Texture* plyrright;
-bool isRunning, front;
+SDL_Texture* bckgr;
+bool isRunning;
 int frm_cnt, last_frm, lst_count, tmr_fps, fps;
 entt::registry registry;
-entt::entity scene1, scene2;
-entt::entity player;
-int bckgrId;
+
+class EnvironmentSystem {
+    private:
+        uint8_t id;
+        SDL_Surface* currBkgr;
+        std::vector<entt::entity> scenes;
+    public:
+        EnvironmentSystem() {
+            this->id = 0;
+        }
+        void LoadScenes(SDL_Renderer* renderer) {
+            SDL_Texture* bkgr = nullptr;
+            /* Scene 1 */
+            entt::entity scene1 = registry.create();
+            bkgr = IMG_LoadTexture(renderer,"./res/MainEntrance.png");
+            registry.emplace<background>(scene1,bkgr);
+            registry.emplace<sceneflags>(scene1,(uint8_t)0,true,(uint8_t)0,(uint8_t)0, \
+                                        (uint8_t)WIDTH,(uint8_t)312,(uint8_t)HEIGHT);
+            scenes.push_back(scene1);
+            /* Scene 2 */
+            entt::entity scene2 = registry.create();
+            bkgr = IMG_LoadTexture(renderer,"./res/Area1.png");
+            registry.emplace<background>(scene2,bkgr);
+            registry.emplace<sceneflags>(scene2,(uint8_t)1,false,(uint8_t)1,(uint8_t)0, \
+                                        (uint8_t)WIDTH,(uint8_t)312,(uint8_t)HEIGHT);
+            scenes.push_back(scene2);
+        }
+        void SetBkgrID(uint8_t num) {
+            this->id = num;
+        }
+        SDL_Texture* GetBckgrImage() {
+            auto scene = registry.get<background>(this->scenes.at(this->id));
+            return scene.tex;
+        }
+        ~EnvironmentSystem() {
+            SDL_FreeSurface(this->currBkgr);
+            this->scenes.clear();
+        }
+};
+
+EnvironmentSystem envSystem = EnvironmentSystem();
 
 void Init() {
     printf("Setting up game...\n");
-    /* Scenes */
-    SDL_Texture* bckgr1 = IMG_LoadTexture(renderer,"./res/MainEntrance.png");
-    scene1 = registry.create();
-    registry.emplace<backgroundimage>(scene1,bckgr1);
-    SDL_Rect bckgr1rect;
-    bckgr1rect.w = 23;
-    bckgr1rect.h = 32;
-    bckgr1rect.x = 708;
-    bckgr1rect.y = 317;
-    registry.emplace<figure>(scene1,bckgr1rect);
-    SDL_Texture* bckgr2 = IMG_LoadTexture(renderer,"./res/Area1.png");
-    scene2 = registry.create();
-    registry.emplace<backgroundimage>(scene2,bckgr2);
-    /* Player */
-    player = registry.create();
-    front = true;
-    plyrright = IMG_LoadTexture(renderer,"./res/MainCRight.png");
-    plyrleft = IMG_LoadTexture(renderer,"./res/MainCLeft.png");
-    registry.emplace<backgroundimage>(player,plyrright);
-    registry.emplace<velocity>(player,6,6);
-    SDL_Rect plyrrect;
-    plyrrect.w = plyrrect.h = 64;
-    plyrrect.x = 60;
-    plyrrect.y = 460;
-    registry.emplace<figure>(player,plyrrect);
+    envSystem.LoadScenes(renderer);
     printf("Program set up correctly\n");
-}
+};
 
 void Render() {
     SDL_SetRenderDrawColor(renderer,0,0,0,255);
@@ -58,28 +70,10 @@ void Render() {
     if(tmr_fps<(1000/60)) {
         SDL_Delay((1000/60)-tmr_fps);
     }
-    switch(bckgrId) {
-        case 2: {
-            auto img = registry.get<backgroundimage>(scene2);
-            currBackground = img.tex;
-            break;
-        }
-        default: {
-            auto img = registry.get<backgroundimage>(scene1);
-            currBackground = img.tex;
-            break;
-        }
-    }
-    SDL_RenderCopy(renderer,currBackground,NULL,NULL);
-    if(front) {
-        registry.replace<backgroundimage>(player,plyrright);
-    } else {
-        registry.replace<backgroundimage>(player,plyrleft);
-    }
-    auto plyr = registry.get<backgroundimage,figure>(player);
-    SDL_RenderCopy(renderer,std::get<0>(plyr).tex,NULL,&std::get<1>(plyr).bd);
+    bckgr = envSystem.GetBckgrImage();
+    SDL_RenderCopy(renderer,bckgr,NULL,NULL);
     SDL_RenderPresent(renderer);
-}
+};
 
 void Input() {
     SDL_Event event;
@@ -89,45 +83,33 @@ void Input() {
             isRunning = false;
         }
         if(keystts[SDL_SCANCODE_W]) {
-            auto plyr = registry.get<velocity,figure>(player);
-            std::get<1>(plyr).bd.y -= (int)std::get<0>(plyr).dy;
+            envSystem.SetBkgrID(1);
         }
         if(keystts[SDL_SCANCODE_S]) {
-            auto plyr = registry.get<velocity,figure>(player);
-            std::get<1>(plyr).bd.y += (int)std::get<0>(plyr).dy;
-         }
-        if(keystts[SDL_SCANCODE_A]) { 
-            front = false;
-            auto plyr = registry.get<velocity,figure>(player);
-            std::get<1>(plyr).bd.x -= (int)std::get<0>(plyr).dx;
+            envSystem.SetBkgrID(0);
         }
         if(keystts[SDL_SCANCODE_D]) { 
-            front = true;
-            auto plyr = registry.get<velocity,figure>(player);
-            std::get<1>(plyr).bd.x += (int)std::get<0>(plyr).dx;
+
         }
-    }
-}
+        if(keystts[SDL_SCANCODE_A]) { 
+
+        }
+   }
+};
 
 void Update() {
-    auto plyr = registry.get<velocity,figure>(player);
-    auto scene = registry.get<backgroundimage,figure>(scene1);
-    if(std::get<1>(plyr).bd.x <= 0) {
-        std::get<1>(plyr).bd.x = 0;
-    }
-    if(std::get<1>(plyr).bd.x + std::get<1>(plyr).bd.w > WIDTH) {
-        std::get<1>(plyr).bd.x = WIDTH - std::get<1>(plyr).bd.w;
-    }
-    if(std::get<1>(plyr).bd.y + std::get<1>(plyr).bd.h > HEIGHT) {
-        std::get<1>(plyr).bd.y = HEIGHT - std::get<1>(plyr).bd.h;
-    }
-    if(std::get<1>(plyr).bd.y <= 312) {
-        std::get<1>(plyr).bd.y = 312;
-    }
-    if(SDL_HasIntersection(&std::get<1>(plyr).bd,&std::get<1>(scene).bd)) {
-        bckgrId = 2;
-    }
-}
+    
+};
+
+void CleanEnvironment() {
+    printf("Cleaning up environment...\n");
+    envSystem.~EnvironmentSystem();
+    IMG_Quit();
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    printf("Environment cleaning successful\n");
+};
 
 int main(int argc,char* argv[]) {
     isRunning = true;
@@ -166,11 +148,6 @@ int main(int argc,char* argv[]) {
         Render();
         Update();
     }
-    printf("Cleaning up environment...\n");
-    IMG_Quit();
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    printf("Environment cleaning successful\n");
+    CleanEnvironment();
     return EXIT_FAILURE;
-}
+};
