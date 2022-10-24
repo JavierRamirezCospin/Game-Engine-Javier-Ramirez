@@ -4,7 +4,7 @@
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL.h>
 #include <tuple>
-#include <ctime>
+#include <time.h>
 
 #define WIDTH 800
 #define HEIGHT 640
@@ -79,11 +79,59 @@ class EnvironmentSystem {
             door3Arect.x = 389;
             door3Arect.y = 43;
             registry.emplace<door>(door3A,1,door3Arect,129,354);
+            entt::entity door3B = registry.create();
+            SDL_Rect door3Brect;
+            door3Brect.w = 23;
+            door3Brect.h = 32;
+            door3Brect.x = 389;
+            door3Brect.y = 560;
+            registry.emplace<door>(door3B,3,door3Brect,90,354);
             std::vector<entt::entity> doors3;
             doors3.push_back(door3A);
+            doors3.push_back(door3B);
             registry.emplace<sceneflags>(scene3,2,false,0, \
-                                        301,498,74,564,doors3);
+                                        301,499,45,564,doors3);
             scenes.push_back(scene3);
+            /* Scene 4 */
+            entt::entity scene4 = registry.create();
+            bkgr = IMG_LoadTexture(renderer,"./res/Area2.png");
+            registry.emplace<background>(scene4,bkgr);
+            entt::entity door4A = registry.create();
+            SDL_Rect door4Arect;
+            door4Arect.w = 23;
+            door4Arect.h = 32;
+            door4Arect.x = 90;
+            door4Arect.y = 317;
+            registry.emplace<door>(door4A,2,door4Arect,389,485);
+            entt::entity door4B = registry.create();
+            SDL_Rect door4Brect;
+            door4Brect.w = 23;
+            door4Brect.h = 32;
+            door4Brect.x = 340;
+            door4Brect.y = 317;
+            registry.emplace<door>(door4B,4,door4Brect,280,415);
+            std::vector<entt::entity> doors4;
+            doors4.push_back(door4A);
+            doors4.push_back(door4B);
+            registry.emplace<sceneflags>(scene4,3,false,3, \
+                                        0,WIDTH,312,HEIGHT,doors4);
+            scenes.push_back(scene4);
+            /* Scene 5 */
+            entt::entity scene5 = registry.create();
+            bkgr = IMG_LoadTexture(renderer,"./res/Area3.png");
+            registry.emplace<background>(scene5,bkgr);
+            entt::entity door5A = registry.create();
+            SDL_Rect door5Arect;
+            door5Arect.w = 23;
+            door5Arect.h = 32;
+            door5Arect.x = 280;
+            door5Arect.y = 484;
+            registry.emplace<door>(door5A,3,door5Arect,340,354);
+            std::vector<entt::entity> doors5;
+            doors5.push_back(door5A);
+            registry.emplace<sceneflags>(scene5,4,false,0, \
+                                        224,576,120,491,doors5);
+            scenes.push_back(scene5);
         }
         void SetBkgrID(uint8_t num) {
             this->id = num;
@@ -109,6 +157,14 @@ class EnvironmentSystem {
             auto scene = registry.get<sceneflags>(this->scenes.at(this->id));
             scene.visited = true;
         }
+        int GetNumEnemies() {
+            auto scene = registry.get<sceneflags>(this->scenes.at(this->id));
+            return scene.enemies;
+        }
+        void UpdateNumEnemies() {
+            auto scene = registry.get<sceneflags>(this->scenes.at(this->id));
+            scene.enemies = scene.enemies - 1;
+        }
         ~EnvironmentSystem() {
             SDL_FreeSurface(this->currBkgr);
             this->scenes.clear();
@@ -119,8 +175,10 @@ class MCSystem {
     private:
         entt::entity player;
         SDL_Rect sprtrect;
-        bool front;
+        bool front; /* sprite direction */
         bool atacking;
+        bool first; /* sprite loop */
+        int animtime; /* Animation duration */
     public:
         MCSystem() {
             this->player = registry.create();
@@ -135,6 +193,7 @@ class MCSystem {
             this->sprtrect.w = this->sprtrect.h = 32;
             this->sprtrect.y = 32;
             this->sprtrect.x = 0;
+            this->first = true;
         }
         void LoadCharacter() {
             SDL_Texture* plyrsprt = IMG_LoadTexture(renderer,"./res/MainC.png");
@@ -149,22 +208,17 @@ class MCSystem {
             return plyr.bd;
         }
         SDL_Rect GetSprtRect() {
-            if(front) {
+            if(this->front) {
                 this->sprtrect.y = 32;
-                this->sprtrect.x = 0;
-            } else if(!this->front) {
-                this->sprtrect.y = 0;
-                this->sprtrect.x = 0;
-            }
-            if(atacking and front) {
-                this->sprtrect.y = 64;
-                this->sprtrect.x = 32;
-                atacking = false;
             } 
-            if(atacking and !front) {
+            if(!this->front) {
+                this->sprtrect.y = 0;
+            }
+            if(this->front and this->atacking) {
+                this->sprtrect.y = 64;
+            } 
+            if(!this->front and this->atacking) {
                 this->sprtrect.y = 96;
-                this->sprtrect.x = 32;
-                atacking = false;
             }
             return this->sprtrect;
         }
@@ -199,11 +253,61 @@ class MCSystem {
         }
 };
 
+class EnemySystem {
+    private:
+        entt::entity enemy;
+        SDL_Rect sprtrect;
+        bool front;
+    public:
+        EnemySystem(int x,int y,bool front) {
+            this->front = front;
+            this->enemy = registry.create();
+            registry.emplace<velocity>(this->enemy,4,4);
+            registry.emplace<stats>(this->enemy,100,20);
+            SDL_Rect rect;
+            rect.w = rect.h = 64;
+            rect.x = x;
+            rect.y = y;
+            registry.emplace<figure>(this->enemy,rect);
+            this->sprtrect.w = this->sprtrect.h = 32;
+            this->sprtrect.x = 0;
+            if(this->front) {
+                this->sprtrect.y = 32;
+            } else {
+                this->sprtrect.y = 0;
+            }
+        }
+        void LoadCharacter() {
+            SDL_Texture* enmysprt = IMG_LoadTexture(renderer,"./res/Villain1.png");
+            registry.emplace<sprites>(this->enemy,enmysprt);
+        }
+        SDL_Texture* GetEnemySprite() {
+            auto enemy = registry.get<sprites>(this->enemy);
+            return enemy.sprtsht;
+        }
+        SDL_Rect GetEnemyRect() {
+            auto enemy = registry.get<figure>(this->enemy);
+            return enemy.bd;
+        }
+        SDL_Rect GetSprtRect() {
+            if(this->front) {
+                this->sprtrect.y = 32;
+            } 
+            if(!this->front) {
+                this->sprtrect.y = 0;
+            }
+            return this->sprtrect;
+        }
+        ~EnemySystem() {}
+};
+
 EnvironmentSystem envSystem = EnvironmentSystem();
 MCSystem mcSystem = MCSystem();
+std::vector<EnemySystem> enemies;
 
 void Init() {
     printf("Setting up game...\n");
+    srand(time(NULL));
     envSystem.LoadScenes();
     mcSystem.LoadCharacter();
     printf("Program set up correctly\n");
@@ -223,6 +327,14 @@ void Render() {
     SDL_Rect plyrrect = mcSystem.GetPlyrRect();
     SDL_Rect sprtrect = mcSystem.GetSprtRect();
     SDL_RenderCopy(renderer,plyr,&sprtrect,&plyrrect);
+    if(enemies.size() > 0) {
+        for(EnemySystem enemy: enemies) {
+            SDL_Texture* enemytex = enemy.GetEnemySprite();
+            SDL_Rect enmyrect = enemy.GetEnemyRect();
+            SDL_Rect enmysprt = enemy.GetSprtRect();
+            SDL_RenderCopy(renderer,enemytex,&enmysprt,&enmyrect);
+        }
+    }
     SDL_RenderPresent(renderer);
 };
 
@@ -272,9 +384,21 @@ void Update() {
     for(entt::entity scndoor: scndoors) {
         auto comp = registry.get<door>(scndoor);
         if(SDL_HasIntersection(&plyrrect,&comp.bd)) {
+            enemies.clear();
             mcSystem.SetPosition(comp.newPosX,comp.newPosY);
             envSystem.SetBkgrID(comp.sceneid);
             envSystem.SetVisitedRoom();
+            int numenemies = envSystem.GetNumEnemies();
+            if(numenemies > 0) {
+                for(int x = 0;x < numenemies;x++) {
+                    int posx = (rand() % (bounds[2] - bounds[0] - 64)) + bounds[0];
+                    int posy = (rand() % (bounds[3] - bounds[1] - 64)) + bounds[1];
+                    int direction = rand() % 2;
+                    EnemySystem enemy = EnemySystem(posx,posy,(bool)direction);
+                    enemy.LoadCharacter();
+                    enemies.push_back(enemy);
+                }
+            }
         }
     }
 };
