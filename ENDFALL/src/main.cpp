@@ -179,6 +179,7 @@ class MCSystem {
         bool atacking;
         bool first; /* sprite loop */
         int animtime; /* Animation duration */
+        time_t atkcounter;
     public:
         MCSystem() {
             this->player = registry.create();
@@ -194,6 +195,7 @@ class MCSystem {
             this->sprtrect.y = 32;
             this->sprtrect.x = 0;
             this->first = true;
+            this->animtime = 1;
         }
         void LoadCharacter() {
             SDL_Texture* plyrsprt = IMG_LoadTexture(renderer,"./res/MainC.png");
@@ -208,17 +210,26 @@ class MCSystem {
             return plyr.bd;
         }
         SDL_Rect GetSprtRect() {
+            if(this->atacking) {
+                if(time(0)-this->atkcounter == this->animtime) {
+                    this->atacking = false;
+                }
+            }
             if(this->front) {
                 this->sprtrect.y = 32;
+                this->sprtrect.x = 0;
             } 
             if(!this->front) {
                 this->sprtrect.y = 0;
+                this->sprtrect.x = 0;
             }
             if(this->front and this->atacking) {
                 this->sprtrect.y = 64;
+                this->sprtrect.x = 32;
             } 
             if(!this->front and this->atacking) {
                 this->sprtrect.y = 96;
+                this->sprtrect.x = 32;
             }
             return this->sprtrect;
         }
@@ -245,8 +256,12 @@ class MCSystem {
         void SetDirection(bool direc) {
             this->front = direc;
         }
-        void IsAttacking() {
+        void ActivateAttack() {
             this->atacking = true;
+            this->atkcounter = time(0);
+        }
+        bool IsAttacking() {
+            return this->atacking;
         }
         ~MCSystem() {
             
@@ -360,7 +375,7 @@ void Input() {
             mcSystem.Move(4);
         }
         if(keystts[SDL_SCANCODE_SPACE]) {
-            mcSystem.IsAttacking();
+            mcSystem.ActivateAttack();
         }
    }
 };
@@ -401,6 +416,7 @@ void Update() {
             }
         }
     }
+    printf("%d\n",mcSystem.IsAttacking());
 };
 
 void CleanEnvironment() {
