@@ -161,9 +161,9 @@ class EnvironmentSystem {
             auto scene = registry.get<sceneflags>(this->scenes.at(this->id));
             return scene.enemies;
         }
-        void UpdateNumEnemies() {
-            auto scene = registry.get<sceneflags>(this->scenes.at(this->id));
-            scene.enemies = scene.enemies - 1;
+        void UpdateNumEnemies(int value) {
+            auto scene = registry.get<background,sceneflags>(this->scenes.at(this->id));
+            std::get<1>(scene).enemies = value;
         }
         ~EnvironmentSystem() {
             SDL_FreeSurface(this->currBkgr);
@@ -177,14 +177,15 @@ class MCSystem {
         SDL_Rect sprtrect;
         bool front; /* sprite direction */
         bool atacking;
+        bool candmg; /* Can receive damage */
         bool first; /* sprite loop */
-        int animtime; /* Animation duration */
+        int atktime; /* Animation duration */
         time_t atkcounter;
     public:
         MCSystem() {
             this->player = registry.create();
             registry.emplace<velocity>(this->player,6,6);
-            registry.emplace<stats>(this->player,100,50);
+            registry.emplace<stats>(this->player,100,25);
             SDL_Rect rect;
             rect.w = rect.h = 64;
             rect.x = 60;
@@ -195,7 +196,8 @@ class MCSystem {
             this->sprtrect.y = 32;
             this->sprtrect.x = 0;
             this->first = true;
-            this->animtime = 1;
+            this->atktime = 1;
+            this->candmg = true;
         }
         void LoadCharacter() {
             SDL_Texture* plyrsprt = IMG_LoadTexture(renderer,"./res/MainC.png");
@@ -211,7 +213,7 @@ class MCSystem {
         }
         SDL_Rect GetSprtRect() {
             if(this->atacking) {
-                if(time(0)-this->atkcounter == this->animtime) {
+                if(time(0)-this->atkcounter == this->atktime) {
                     this->atacking = false;
                 }
             }
@@ -263,6 +265,14 @@ class MCSystem {
         bool IsAttacking() {
             return this->atacking;
         }
+        int GetAttack() {
+            auto plyr = registry.get<stats>(this->player);
+            return plyr.attack;
+        }
+        int GetHealth() {
+            auto plyr = registry.get<stats>(this->player);
+            return plyr.health;
+        }
         ~MCSystem() {
             
         }
@@ -273,12 +283,15 @@ class EnemySystem {
         entt::entity enemy;
         SDL_Rect sprtrect;
         bool front;
+        bool candmg; /* Enemy can receive damage */
+        int dmgtime;
+        time_t dmgcounter;
     public:
         EnemySystem(int x,int y,bool front) {
             this->front = front;
             this->enemy = registry.create();
             registry.emplace<velocity>(this->enemy,4,4);
-            registry.emplace<stats>(this->enemy,100,20);
+            registry.emplace<stats>(this->enemy,200,20);
             SDL_Rect rect;
             rect.w = rect.h = 64;
             rect.x = x;
@@ -291,6 +304,8 @@ class EnemySystem {
             } else {
                 this->sprtrect.y = 0;
             }
+            this->dmgtime = 1.5;
+            this->candmg = true;
         }
         void LoadCharacter() {
             SDL_Texture* enmysprt = IMG_LoadTexture(renderer,"./res/Villain1.png");
@@ -305,6 +320,11 @@ class EnemySystem {
             return enemy.bd;
         }
         SDL_Rect GetSprtRect() {
+            if(!this->candmg) {
+                if(time(0)-this->dmgcounter == this->dmgtime) {
+                    this->candmg = true;
+                }
+            }
             if(this->front) {
                 this->sprtrect.y = 32;
             } 
@@ -312,6 +332,18 @@ class EnemySystem {
                 this->sprtrect.y = 0;
             }
             return this->sprtrect;
+        }
+        void TakeDamage(int damage) {
+            if(this->candmg) {
+                this->candmg = false;
+                this->dmgcounter = time(0);
+                auto enemy = registry.get<velocity,stats>(this->enemy);
+                std::get<1>(enemy).health = std::get<1>(enemy).health - damage;   
+            }
+        }
+        int GetHealth() {
+            auto enemy = registry.get<stats>(this->enemy);
+            return enemy.health;
         }
         ~EnemySystem() {}
 };
@@ -395,6 +427,7 @@ void Update() {
     if(plyrrect.y + plyrrect.h > bounds[3]) {
         mcSystem.SetPosition(plyrrect.x,bounds[3]-plyrrect.h);
     }
+    /* Interactions with doors */
     std::vector<entt::entity> scndoors = envSystem.GetDoors();
     for(entt::entity scndoor: scndoors) {
         auto comp = registry.get<door>(scndoor);
@@ -406,8 +439,9 @@ void Update() {
             int numenemies = envSystem.GetNumEnemies();
             if(numenemies > 0) {
                 for(int x = 0;x < numenemies;x++) {
-                    int posx = (rand() % (bounds[2] - bounds[0] - 64)) + bounds[0];
-                    int posy = (rand() % (bounds[3] - bounds[1] - 64)) + bounds[1];
+                    int* newbounds = envSystem.GetLimits();
+                    int posx = (rand() % (newbounds[2] - newbounds[0] - 64)) + newbounds[0];
+                    int posy = (rand() % (newbounds[3] - newbounds[1] - 64)) + newbounds[1];
                     int direction = rand() % 2;
                     EnemySystem enemy = EnemySystem(posx,posy,(bool)direction);
                     enemy.LoadCharacter();
@@ -416,7 +450,21 @@ void Update() {
             }
         }
     }
-    printf("%d\n",mcSystem.IsAttacking());
+    /* Interactions with enemies */
+    if(enemies.size() > 0) {
+        for(int x = 0;x < enemies.size();x++) {
+            EnemySystem enemy = enemies.at(x);
+            SDL_Rect enmyrect = enemy.GetEnemyRect();
+            if(SDL_HasIntersection(&plyrrect,&enmyrect) and mcSystem.IsAttacking()) {
+                enemy.TakeDamage(mcSystem.GetAttack());
+                printf("Enemy %d health: %d\n",x,enemy.GetHealth());
+                if(enemy.GetHealth() <= 0) {
+                    envSystem.UpdateNumEnemies(envSystem.GetNumEnemies()-1);
+                    enemies.erase(enemies.begin()+x);
+                }
+            }
+        }
+    }
 };
 
 void CleanEnvironment() {
