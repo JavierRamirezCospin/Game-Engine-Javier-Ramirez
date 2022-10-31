@@ -177,6 +177,7 @@ class MCSystem {
         SDL_Rect sprtrect;
         bool front; /* sprite direction */
         bool atacking;
+        bool canatk;
         bool candmg; /* Can receive damage */
         bool first; /* sprite loop */
         int atktime; /* Animation duration */
@@ -187,7 +188,7 @@ class MCSystem {
         MCSystem() {
             this->player = registry.create();
             registry.emplace<velocity>(this->player,6,6);
-            registry.emplace<stats>(this->player,100,50);
+            registry.emplace<stats>(this->player,200,50);
             SDL_Rect rect;
             rect.w = rect.h = 64;
             rect.x = 60;
@@ -199,6 +200,7 @@ class MCSystem {
             this->sprtrect.x = 0;
             this->first = true;
             this->atacking = false;
+            this->canatk = true;
             this->atktime = 1;
             this->candmg = true;
             this->dmgtime = 1;
@@ -219,6 +221,7 @@ class MCSystem {
             if(this->atacking) {
                 if(time(0)-this->atkcounter == this->atktime) {
                     this->atacking = false;
+                    this->canatk = true;
                 }
             }
             if(!this->candmg) {
@@ -270,6 +273,7 @@ class MCSystem {
         void ActivateAttack() {
             this->atacking = true;
             this->atkcounter = time(0);
+            this->canatk;
         }
         bool IsAttacking() {
             return this->atacking;
@@ -278,20 +282,27 @@ class MCSystem {
             auto plyr = registry.get<stats>(this->player);
             return plyr.attack;
         }
-        void BlockCanDmg() {
-            this->candmg = false;
-            dmgcounter = time(0);
+        void BlockCanAtk() {
+            this->atacking = false;
+            this->atkcounter = time(0);
+            this->canatk = false;
         }
         bool CanAttack() {
-            return this->candmg;
+            return this->canatk;
+        }
+        void TakeDamage(int damage) {
+            if(this->candmg) {
+                this->candmg = false;
+                this->dmgcounter = time(0);
+                auto plyr = registry.get<velocity,stats>(this->player);
+                std::get<1>(plyr).health = damage;   
+            }
         }
         int GetHealth() {
             auto plyr = registry.get<stats>(this->player);
             return plyr.health;
         }
-        ~MCSystem() {
-            
-        }
+        ~MCSystem() {  }
 };
 
 class EnemySystem {
@@ -300,17 +311,20 @@ class EnemySystem {
         SDL_Rect sprtrect;
         bool front;
         bool candmg; /* Enemy can receive damage */
-        int* canchange;
         int dmgtime;
+        int atktime;
+        int state;
         int stttime;
+        bool canatk;
         time_t dmgcounter;
         time_t sttcounter;
+        time_t atkcounter;
     public:
         EnemySystem(int x,int y,bool front) {
             this->front = front;
             this->enemy = registry.create();
-            registry.emplace<velocity>(this->enemy,4,4);
-            registry.emplace<stats>(this->enemy,100,20);
+            registry.emplace<velocity>(this->enemy,2,2);
+            registry.emplace<stats>(this->enemy,100,10);
             SDL_Rect rect;
             rect.w = rect.h = 64;
             rect.x = x;
@@ -325,8 +339,14 @@ class EnemySystem {
             }
             this->dmgtime = 1;
             this->candmg = true;
-            this->stttime = 1;
-            this->canchange = new int(0);
+            this->canatk = true;
+            this->atktime = 2;
+            this->state = rand() % 3;
+            if(this->state == 0 or this->stttime == 1) {
+                this->stttime = 3; /* Moving toward or from player */
+            } else if(this->state == 2) {
+                this->stttime = 2; /* Idle */
+            }
             this->sttcounter = time(0);
         }
         void LoadCharacter() {
@@ -368,28 +388,99 @@ class EnemySystem {
                 this->candmg = false;
                 this->dmgcounter = time(0);
                 auto enemy = registry.get<velocity,stats>(this->enemy);
-                std::get<1>(enemy).health = damage;   
+                std::get<1>(enemy).health = damage;
+                this->state = 2;
+                this->sttcounter = time(0);
+                this->stttime = 3;
             }
+        }
+        void Update() {
+            if(time(0)-this->sttcounter == this->stttime) {
+                this->state = rand() % 3;
+                if(this->state == 0) {
+                    this->stttime = 3; /* attacking player */
+                } else if(this->state == 1) {
+                     this->stttime == 2; /* running from player  */
+                } else if(this->state == 2) {
+                    this->stttime = 1; /* Idle */
+                }
+                this->sttcounter = time(0);
+            }
+            if(!this->canatk) {
+                if(time(0)-this->atkcounter == this->atktime) {
+                    this->canatk = true;
+                }
+            }
+        }
+        void Perform(SDL_Rect plyrrect) {
+            auto enmy = registry.get<figure,velocity>(this->enemy);
+            if(plyrrect.x+plyrrect.w/2 > std::get<0>(enmy).bd.x+std::get<0>(enmy).bd.w/2) { 
+                this->front = true; 
+            } else { 
+                this->front = false; 
+            }
+            if(this->state == 0) {
+                if(plyrrect.y+plyrrect.h/2 > std::get<0>(enmy).bd.y+std::get<0>(enmy).bd.h/2) {
+                    std::get<0>(enmy).bd.y += std::get<1>(enmy).dy;
+                } else if(plyrrect.y+plyrrect.h/2 > std::get<0>(enmy).bd.y+std::get<0>(enmy).bd.h/2) {
+                    std::get<0>(enmy).bd.y -= std::get<1>(enmy).dy;
+                } else {
+                    if(plyrrect.x+plyrrect.w/2 > std::get<0>(enmy).bd.x+std::get<0>(enmy).bd.w/2) {
+                        std::get<0>(enmy).bd.x += std::get<1>(enmy).dx;
+                    } else if(plyrrect.x+plyrrect.w/2 < std::get<0>(enmy).bd.x+std::get<0>(enmy).bd.w/2) {
+                        std::get<0>(enmy).bd.x -= std::get<1>(enmy).dx;
+                    }
+                }
+                if(SDL_HasIntersection(&std::get<0>(enmy).bd,&plyrrect) && this->canatk) {
+                    this->canatk = false;
+                    this->atkcounter = time(0);
+                }
+            } else if(this->state == 1) {
+                int opt = rand() % 2;
+                if(plyrrect.x+plyrrect.w/2 > std::get<0>(enmy).bd.x+std::get<0>(enmy).bd.w/2) {
+                    std::get<0>(enmy).bd.x -= std::get<1>(enmy).dx;
+                } else if(plyrrect.x+plyrrect.w/2 < std::get<0>(enmy).bd.x+std::get<0>(enmy).bd.w/2) {
+                    std::get<0>(enmy).bd.x += std::get<1>(enmy).dx;
+                } else {
+                    if(plyrrect.y+plyrrect.h/2 > std::get<0>(enmy).bd.y+std::get<0>(enmy).bd.h/2) {
+                        std::get<0>(enmy).bd.y -= std::get<1>(enmy).dy;
+                    } else if(plyrrect.y+plyrrect.h/2 > std::get<0>(enmy).bd.y+std::get<0>(enmy).bd.h/2) {
+                        std::get<0>(enmy).bd.y += std::get<1>(enmy).dy;
+                    }
+                }
+            } else if(this->state == 2) {
+            }
+        }
+        void SetPosition(int x,int y) {
+            auto enmy = registry.get<figure,velocity>(this->enemy);
+            std::get<0>(enmy).bd.x = x;
+            std::get<0>(enmy).bd.y = y;
         }
         int GetHealth() {
             auto enemy = registry.get<stats>(this->enemy);
             return enemy.health;
         }
+        int GetAttack() {
+            auto enemy = registry.get<stats>(this->enemy);
+            return enemy.attack; 
+        }
         void AddForce(int playerX,int playerY) {
             auto enmy = registry.get<velocity,figure>(this->enemy);
             if(playerX > std::get<1>(enmy).bd.x + std::get<1>(enmy).bd.w/2) {
-                std::get<1>(enmy).bd.x = std::get<1>(enmy).bd.x - std::get<0>(enmy).dx*3;
+                std::get<1>(enmy).bd.x = std::get<1>(enmy).bd.x - std::get<0>(enmy).dx*5;
             } else if(playerX < std::get<1>(enmy).bd.x + std::get<1>(enmy).bd.w/2) {
-                std::get<1>(enmy).bd.x = std::get<1>(enmy).bd.x + std::get<0>(enmy).dx*3;
-            } else {
+                std::get<1>(enmy).bd.x = std::get<1>(enmy).bd.x + std::get<0>(enmy).dx*5;
             }
+        }
+        bool GetIsAttacking() {
+            return !this->canatk;
         }
         ~EnemySystem() {}
 };
 
 EnvironmentSystem envSystem = EnvironmentSystem();
 MCSystem mcSystem = MCSystem();
-std::vector<EnemySystem> enemies;
+std::vector<EnemySystem*> enemies;
 
 void Init() {
     printf("Setting up game...\n");
@@ -414,10 +505,10 @@ void Render() {
     SDL_Rect sprtrect = mcSystem.GetSprtRect();
     SDL_RenderCopy(renderer,plyr,&sprtrect,&plyrrect);
     if(enemies.size() > 0) {
-        for(EnemySystem enemy: enemies) {
-            SDL_Texture* enemytex = enemy.GetEnemySprite();
-            SDL_Rect enmyrect = enemy.GetEnemyRect();
-            SDL_Rect enmysprt = enemy.GetSprtRect();
+        for(EnemySystem* enemy: enemies) {
+            SDL_Texture* enemytex = enemy->GetEnemySprite();
+            SDL_Rect enmyrect = enemy->GetEnemyRect();
+            SDL_Rect enmysprt = enemy->GetSprtRect();
             SDL_RenderCopy(renderer,enemytex,&enmysprt,&enmyrect);
         }
     }
@@ -482,8 +573,8 @@ void Update() {
                     int posx = (rand() % (newbounds[2] - newbounds[0] - 64)) + newbounds[0];
                     int posy = (rand() % (newbounds[3] - newbounds[1] - 64)) + newbounds[1];
                     int direction = rand() % 2;
-                    EnemySystem enemy = EnemySystem(posx,posy,(bool)direction);
-                    enemy.LoadCharacter();
+                    EnemySystem* enemy = new EnemySystem(posx,posy,(bool)direction);
+                    enemy->LoadCharacter();
                     enemies.push_back(enemy);
                 }
             }
@@ -492,16 +583,39 @@ void Update() {
     /* Interactions with enemies */
     if(enemies.size() > 0) {
         for(int x = 0;x < enemies.size();x++) {
-            EnemySystem enemy = enemies.at(x);
-            SDL_Rect enmyrect = enemy.GetEnemyRect();
+            EnemySystem* enemy = enemies.at(x);
+            SDL_Rect enmyrect = enemy->GetEnemyRect();
+            if(enmyrect.x < bounds[0]-10) {
+                enemy->SetPosition(bounds[0]-10,enmyrect.y);
+            } 
+            if(enmyrect.y < bounds[1]-10) {
+                enemy->SetPosition(enmyrect.x,bounds[1]-10);
+            }
+            if(enmyrect.x + enmyrect.w > bounds[2]+10) {
+                enemy->SetPosition(bounds[2]-enmyrect.w+10,enmyrect.y);
+            }
+            if(enmyrect.y + enmyrect.h > bounds[3]) {
+                enemy->SetPosition(enmyrect.x,bounds[3]-enmyrect.h);
+            }
+            enemy->Update();
+            enemy->Perform(plyrrect);
+            if(enemy->GetIsAttacking()) {
+                mcSystem.TakeDamage(mcSystem.GetHealth()-enemy->GetAttack());
+                printf("Player health: %d\n",mcSystem.GetHealth());
+                if(mcSystem.GetHealth() <= 0) {
+                    printf("Player is Dead...\n");
+                    isRunning = false;
+                }
+            }
             if(SDL_HasIntersection(&plyrrect,&enmyrect) and mcSystem.IsAttacking() and mcSystem.CanAttack()) {
-                mcSystem.BlockCanDmg();
-                enemy.TakeDamage(enemy.GetHealth()-mcSystem.GetAttack());
-                enemy.AddForce(plyrrect.x + plyrrect.w/2,plyrrect.y + plyrrect.h/2);
-                printf("Enemy %d health: %d\n",x,enemy.GetHealth());
-                if(enemy.GetHealth() <= 0) {
+                mcSystem.BlockCanAtk();
+                enemy->TakeDamage(enemy->GetHealth()-mcSystem.GetAttack());
+                enemy->AddForce(plyrrect.x + plyrrect.w/2,plyrrect.y + plyrrect.h/2);
+                printf("Enemy %d health: %d\n",x,enemy->GetHealth());
+                if(enemy->GetHealth() <= 0) {
                     envSystem.UpdateNumEnemies(envSystem.GetNumEnemies()-1);
                     enemies.erase(enemies.begin()+x);
+                    delete enemy;
                 }
             }
         }
@@ -510,8 +624,6 @@ void Update() {
 
 void CleanEnvironment() {
     printf("Cleaning up environment...\n");
-    envSystem.~EnvironmentSystem();
-    mcSystem.~MCSystem();
     registry.clear();
     IMG_Quit();
     SDL_DestroyRenderer(renderer);
