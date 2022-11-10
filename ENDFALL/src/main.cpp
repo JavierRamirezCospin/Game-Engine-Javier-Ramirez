@@ -16,6 +16,9 @@ SDL_Texture* plyr;
 bool isRunning;
 int frm_cnt, last_frm, lst_count, tmr_fps, fps;
 entt::registry registry;
+Uint64 NOW = SDL_GetPerformanceCounter();
+Uint64 LAST = 0;
+double deltatime = 0;
 
 class EnvironmentSystem {
     private:
@@ -658,6 +661,9 @@ int main(int argc,char* argv[]) {
     printf("Program initialized correctly\n");
     Init();
     while(isRunning) {
+        LAST = NOW;
+        NOW = SDL_GetPerformanceCounter();
+        deltatime = (double)((NOW-LAST)*1000/(double)SDL_GetPerformanceFrequency()) * 0.001;
         last_frm = SDL_GetTicks();
         if(last_frm >= (lst_time+1000)) {
             lst_time = last_frm;
